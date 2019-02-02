@@ -13,6 +13,7 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.drive.*;
+import edu.wpi.first.wpilibj.Timer;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -26,6 +27,7 @@ public class Robot extends TimedRobot {
   private static final String kCustomAuto = "My Auto";
   private String m_autoSelected;
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
+  private Timer m_timer = new Timer();
 
   //Initialize drive motors and controllers
   private final Talon m_driveLeft = new Talon(0);
@@ -35,6 +37,8 @@ public class Robot extends TimedRobot {
 
   //Create drivetrain object from DifferentialDrive
   private final DifferentialDrive m_driveTrain = new DifferentialDrive(m_driveLeft, m_driveRight);
+
+  private int cycles = 0;
 
   /**
    * This function is run when the robot is first started up and should be
@@ -46,8 +50,10 @@ public class Robot extends TimedRobot {
     m_chooser.addOption("My Auto", kCustomAuto);
     SmartDashboard.putData("Auto choices", m_chooser);
     
+    //jeremy big gay
+
     //change drive axes for forward-back to up-down on left joystick (1), and left-right to left-right on right joystick (2)
-    m_stick.setXChannel(2);
+    m_stick.setXChannel(3);
     m_stick.setYChannel(1);
   }
 
@@ -79,6 +85,9 @@ public class Robot extends TimedRobot {
     m_autoSelected = m_chooser.getSelected();
     // m_autoSelected = SmartDashboard.getString("Auto Selector", kDefaultAuto);
     System.out.println("Auto selected: " + m_autoSelected);
+    m_timer.reset();
+    m_timer.start();
+    cycles = 0;
   }
 
   /**
@@ -93,6 +102,18 @@ public class Robot extends TimedRobot {
       case kDefaultAuto:
       default:
         // Put default auto code here
+        if(cycles<2){
+          if(m_timer.get()<300){
+            m_driveTrain.tankDrive(1, 1);
+          }else if(m_timer.get()<600){
+            m_driveTrain.tankDrive(-1, -1);
+          }else{
+            cycles++;
+            m_timer.reset();
+          }
+        }else{
+          m_driveTrain.tankDrive(0, 0);
+        }
         break;
     }
   }
@@ -104,7 +125,7 @@ public class Robot extends TimedRobot {
   public void teleopPeriodic() {
 
     //drive with assigned joysticks
-    m_driveTrain.arcadeDrive(m_stick.getY(),m_stick.getX());
+    m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
 
   }
 
