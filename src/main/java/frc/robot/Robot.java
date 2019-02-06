@@ -14,6 +14,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.drive.*;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.cscore.*;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -40,6 +41,9 @@ public class Robot extends TimedRobot {
 
   private int cycles = 0;
 
+  UsbCamera visionCam = new UsbCamera("VisionProcCam", 0);
+  MjpegServer camServer = new MjpegServer("VisionCamServer", 1181);
+
   /**
    * This function is run when the robot is first started up and should be
    * used for any initialization code.
@@ -55,6 +59,10 @@ public class Robot extends TimedRobot {
     //change drive axes for forward-back to up-down on left joystick (1), and left-right to left-right on right joystick (2)
     m_stick.setXChannel(3);
     m_stick.setYChannel(1);
+
+    
+  visionCam.setVideoMode(VideoMode.PixelFormat.kYUYV, 320, 240, 60);
+  camServer.setSource(visionCam);
   }
 
   /**
