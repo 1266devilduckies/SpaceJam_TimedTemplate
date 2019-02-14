@@ -7,6 +7,7 @@
 
 package frc.robot;
 
+import edu.wpi.first.wpilibj.DigitalInput;
 import edu.wpi.first.wpilibj.Joystick;
 import edu.wpi.first.wpilibj.Talon;
 import edu.wpi.first.wpilibj.TimedRobot;
@@ -14,7 +15,8 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.drive.*;
 import edu.wpi.first.wpilibj.Timer;
-import edu.wpi.cscore.*;
+import com.ctre.phoenix.motorcontrol.*;
+import com.ctre.phoenix.motorcontrol.can.*;
 
 /**
  * The VM is configured to automatically run this class, and to call the
@@ -33,16 +35,19 @@ public class Robot extends TimedRobot {
   //Initialize drive motors and controllers
   private final Talon m_driveLeft = new Talon(0);
   private final Talon m_driveRight = new Talon(1);
+
   private final Joystick m_stick = new Joystick(0);
   private final Joystick m_stick2 = new Joystick(1);
 
   //Create drivetrain object from DifferentialDrive
   private final DifferentialDrive m_driveTrain = new DifferentialDrive(m_driveLeft, m_driveRight);
 
-  private int cycles = 0;
+  private final TalonSRX m_elevator = new TalonSRX(0);
+  private final DigitalInput m_magSwitch = new DigitalInput(0);
+  private TalonSRXConfiguration m_config = new TalonSRXConfiguration();
+  //private boolean reset = false;
 
-  UsbCamera visionCam = new UsbCamera("VisionProcCam", 0);
-  MjpegServer camServer = new MjpegServer("VisionCamServer", 1181);
+  private int cycles = 0;
 
   /**
    * This function is run when the robot is first started up and should be
@@ -60,9 +65,17 @@ public class Robot extends TimedRobot {
     m_stick.setXChannel(3);
     m_stick.setYChannel(1);
 
-    
-  visionCam.setVideoMode(VideoMode.PixelFormat.kYUYV, 320, 240, 60);
-  camServer.setSource(visionCam);
+    m_elevator.setInverted(true);
+
+    m_elevator.getAllConfigs(m_config);
+    m_config.primaryPID.selectedFeedbackSensor = FeedbackDevice.QuadEncoder;
+    m_config.primaryPID.selectedFeedbackCoefficient = 1;
+    m_config.forwardSoftLimitEnable = true;
+    m_config.forwardSoftLimitThreshold = 27000;
+    m_config.reverseSoftLimitEnable = true;
+    m_config.reverseSoftLimitThreshold = 0;
+    m_config.slot0.kP = 0;
+    m_elevator.configAllSettings(m_config);
   }
 
   /**
@@ -131,16 +144,33 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
+    double m_stickY = m_stick.getY()*-1;
 
     //drive with assigned joysticks
-    m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
+    //m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
+    m_driveTrain.tankDrive(0, 0);
 
+    if(m_magSwitch.get()==false){
+      m_elevator.setSelectedSensorPosition(0, 0, 100);
+    }
+
+    //if(m_magSwitch.get()==false && m_stickY<0){
+        //m_elevator.set(ControlMode.PercentOutput, 0);
+    //}else{
+        m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
+    //}
   }
 
+  @Override
+  public void testInit() {
+    System.out.println(m_config);
+  }
   /**
    * This function is called periodically during test mode.
    */
   @Override
   public void testPeriodic() {
+    double m_stickY = m_stick.getY()*-1;
+    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
   }
 }
