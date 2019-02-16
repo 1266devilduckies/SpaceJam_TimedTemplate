@@ -49,6 +49,9 @@ public class Robot extends TimedRobot {
 
   private int cycles = 0;
 
+  private final Talon m_clawMotor = new Talon(2);
+  private double m_maxExtraSpeed = 1;
+
   /**
    * This function is run when the robot is first started up and should be
    * used for any initialization code.
@@ -70,6 +73,7 @@ public class Robot extends TimedRobot {
     m_elevator.getAllConfigs(m_config);
     m_config.primaryPID.selectedFeedbackSensor = FeedbackDevice.QuadEncoder;
     m_config.primaryPID.selectedFeedbackCoefficient = 1;
+    m_elevator.setSensorPhase(true);
     m_config.forwardSoftLimitEnable = true;
     m_config.forwardSoftLimitThreshold = 27000;
     m_config.reverseSoftLimitEnable = true;
@@ -147,18 +151,35 @@ public class Robot extends TimedRobot {
     double m_stickY = m_stick.getY()*-1;
 
     //drive with assigned joysticks
-    //m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
-    m_driveTrain.tankDrive(0, 0);
+    m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
 
     if(m_magSwitch.get()==false){
       m_elevator.setSelectedSensorPosition(0, 0, 100);
     }
 
-    //if(m_magSwitch.get()==false && m_stickY<0){
-        //m_elevator.set(ControlMode.PercentOutput, 0);
-    //}else{
-        m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
-    //}
+    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
+
+    if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
+      m_maxExtraSpeed = SmartDashboard.getNumber("Maximum Motor Speed", 1);
+    }
+
+    double targetOutput = 0;
+
+    if(m_stick.getRawButton(4)){
+      targetOutput = m_maxExtraSpeed;
+    }else if(m_stick.getRawButton(2)){
+      targetOutput = m_maxExtraSpeed*-1;
+    }else{
+      targetOutput = 0;
+    }
+
+    if (m_clawMotor.getSpeed()>targetOutput){
+      m_clawMotor.setSpeed(m_clawMotor.getSpeed() - 0.1);
+    }else if (m_clawMotor.getSpeed()<targetOutput){
+      m_clawMotor.setSpeed(m_clawMotor.getSpeed() + 0.1);
+    }
+
+    SmartDashboard.putNumber("Extra Motor Speed", m_clawMotor.getSpeed());
   }
 
   @Override
@@ -172,5 +193,7 @@ public class Robot extends TimedRobot {
   public void testPeriodic() {
     double m_stickY = m_stick.getY()*-1;
     m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
+    
+    
   }
 }
