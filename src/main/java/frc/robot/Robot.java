@@ -32,25 +32,39 @@ public class Robot extends TimedRobot {
   private final SendableChooser<String> m_chooser = new SendableChooser<>();
   private Timer m_timer = new Timer();
 
-  //Initialize drive motors and controllers
+  //Initialize drive motors
   private final Talon m_driveLeft = new Talon(0);
   private final Talon m_driveRight = new Talon(1);
 
-  private final Joystick m_stick = new Joystick(0);
-  private final Joystick m_stick2 = new Joystick(1);
+  //Initialize intake motors
+  private final Talon m_ballInMotor = new Talon(2);
+  private final Talon m_hatchInMotor = new Talon(3);
+
+  //prepare intake max speed
+  private double m_maxIntakeSpeed = 1;
+
+  //Initialize controllers
+  private final Joystick m_driveStick = new Joystick(0);
+  private final Joystick m_opStick = new Joystick(1);
 
   //Create drivetrain object from DifferentialDrive
   private final DifferentialDrive m_driveTrain = new DifferentialDrive(m_driveLeft, m_driveRight);
 
+  //Create TalonSRX object for elevator, magnetic limit switch for reverse limit on elevator, and configuration object so we can assign same config to any SRX
   private final TalonSRX m_elevator = new TalonSRX(0);
   private final DigitalInput m_magSwitch = new DigitalInput(0);
-  private TalonSRXConfiguration m_config = new TalonSRXConfiguration();
-  //private boolean reset = false;
+  private TalonSRXConfiguration m_eleConfig = new TalonSRXConfiguration();
+  private int m_elevPos = 0;
+
+  //Same as elevator initialization, but for the pivot
+  private final TalonSRX m_pivot = new TalonSRX(2);
+  //add limit switch for pivot here
+  private TalonSRXConfiguration m_pivotConfig = new TalonSRXConfiguration();
+  private boolean m_pivotFolded = true;
+  private int m_pivotPos = 0;
+
 
   private int cycles = 0;
-
-  private final Talon m_clawMotor = new Talon(2);
-  private double m_maxExtraSpeed = 1;
 
   /**
    * This function is run when the robot is first started up and should be
@@ -58,6 +72,7 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void robotInit() {
+    //Create auto selector
     m_chooser.setDefaultOption("Default Auto", kDefaultAuto);
     m_chooser.addOption("My Auto", kCustomAuto);
     SmartDashboard.putData("Auto choices", m_chooser);
@@ -65,21 +80,36 @@ public class Robot extends TimedRobot {
     //jeremy big gay
 
     //change drive axes for forward-back to up-down on left joystick (1), and left-right to left-right on right joystick (2)
-    m_stick.setXChannel(3);
-    m_stick.setYChannel(1);
+    m_driveStick.setXChannel(3);
+    m_driveStick.setYChannel(1);
 
+    //elevator motor configuration
     m_elevator.setInverted(true);
-
-    m_elevator.getAllConfigs(m_config);
-    m_config.primaryPID.selectedFeedbackSensor = FeedbackDevice.QuadEncoder;
-    m_config.primaryPID.selectedFeedbackCoefficient = 1;
+    m_elevator.getAllConfigs(m_eleConfig);
+    m_eleConfig.primaryPID.selectedFeedbackSensor = FeedbackDevice.QuadEncoder;
+    m_eleConfig.primaryPID.selectedFeedbackCoefficient = 1;
     m_elevator.setSensorPhase(true);
-    m_config.forwardSoftLimitEnable = true;
-    m_config.forwardSoftLimitThreshold = 27000;
-    m_config.reverseSoftLimitEnable = true;
-    m_config.reverseSoftLimitThreshold = 0;
-    m_config.slot0.kP = 0;
-    m_elevator.configAllSettings(m_config);
+    m_eleConfig.forwardSoftLimitEnable = true;
+    m_eleConfig.forwardSoftLimitThreshold = 25000;
+    m_eleConfig.reverseSoftLimitEnable = true;
+    m_eleConfig.reverseSoftLimitThreshold = 0;
+    m_eleConfig.slot0.kP = 0.25;
+    m_eleConfig.slot0.kI = 0;
+    m_elevator.configAllSettings(m_eleConfig);
+
+    //pivot motor configuration
+    m_pivot.setInverted(true);
+    m_pivot.getAllConfigs(m_pivotConfig);
+    m_pivotConfig.primaryPID.selectedFeedbackSensor = FeedbackDevice.QuadEncoder;
+    m_pivotConfig.primaryPID.selectedFeedbackCoefficient = 1;
+    m_pivot.setSensorPhase(true);
+    m_pivotConfig.forwardSoftLimitEnable = true;
+    m_pivotConfig.forwardSoftLimitThreshold = 2500;
+    m_pivotConfig.reverseSoftLimitEnable = true;
+    m_pivotConfig.reverseSoftLimitThreshold = 0;
+    m_pivotConfig.slot0.kP = 0.25;
+    m_pivotConfig.slot0.kI = 0;
+    m_pivot.configAllSettings(m_pivotConfig);
   }
 
   /**
@@ -127,6 +157,7 @@ public class Robot extends TimedRobot {
       case kDefaultAuto:
       default:
         // Put default auto code here
+        // moves drive train at full speed forward and back for 20 minutes to test gear wear or something, changes direction every 5 minutes
         if(cycles<2){
           if(m_timer.get()<300){
             m_driveTrain.tankDrive(1, 1);
@@ -148,52 +179,147 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void teleopPeriodic() {
-    double m_stickY = m_stick.getY()*-1;
+
+    //invert y axis (default controller backwards)
+    double m_stickY = m_driveStick.getY()*-1;
 
     //drive with assigned joysticks
-    m_driveTrain.tankDrive(m_stick.getY(), m_stick.getX());
+    m_driveTrain.tankDrive(m_stickY, m_driveStick.getX()*-1);
 
+    //move elevator at half speed of Y axis
+    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);    
+
+    //Use smartdashboard to set max speed of claw motor
+    if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
+      m_maxIntakeSpeed = SmartDashboard.getNumber("Maximum Motor Speed", 1);
+    }
+
+    //if cross is pressed
+    if(m_driveStick.getRawButton(2)){
+      //set to low position
+      m_elevPos = 0;
+    //else if square is pressed
+    }else if(m_driveStick.getRawButton(1)){
+      //set to middle position
+      m_elevPos = 13000;
+    //else if triangle is pressed
+    }else if(m_driveStick.getRawButton(4)){
+      //set to highest position
+      m_elevPos = 25000;
+    //else if circle is pressed
+    }else if(m_driveStick.getRawButtonPressed(3)){
+      //and the pivot motor is folded in
+      if(m_pivotFolded==true){
+        //fold out
+        m_pivot.set(ControlMode.Position, 1000);
+      }else{
+        //fold in
+        m_pivot.set(ControlMode.Position, 0);
+      }
+      //reverse status
+      m_pivotFolded = !m_pivotFolded;
+    }
+
+    m_elevator.set(ControlMode.Position, m_elevPos);
+
+    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
     if(m_magSwitch.get()==false){
+      //reset encoder to 0
       m_elevator.setSelectedSensorPosition(0, 0, 100);
     }
 
-    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
+    //when the magnetic sensor is triggered (i.e. pivot is fully folded)
+    /*if(m_magSwitch.get()==false){
+      //reset encoder to 0
+      m_pivot.setSelectedSensorPosition(0, 0, 100);
+    }*/
 
-    if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
-      m_maxExtraSpeed = SmartDashboard.getNumber("Maximum Motor Speed", 1);
-    }
+    double ballInOutput = 0;
 
-    double targetOutput = 0;
-
-    if(m_stick.getRawButton(4)){
-      targetOutput = m_maxExtraSpeed;
-    }else if(m_stick.getRawButton(2)){
-      targetOutput = m_maxExtraSpeed*-1;
+    if(m_opStick.getRawButton(5)){
+      ballInOutput = m_maxIntakeSpeed;
+    }else if(m_opStick.getRawButton(7)){
+      ballInOutput = -m_maxIntakeSpeed;
     }else{
-      targetOutput = 0;
+      ballInOutput = 0;
     }
 
-    if (m_clawMotor.getSpeed()>targetOutput){
-      m_clawMotor.setSpeed(m_clawMotor.getSpeed() - 0.1);
-    }else if (m_clawMotor.getSpeed()<targetOutput){
-      m_clawMotor.setSpeed(m_clawMotor.getSpeed() + 0.1);
+    if (m_ballInMotor.getSpeed()>ballInOutput){
+      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() - 0.1);
+    }else if (m_ballInMotor.getSpeed()<ballInOutput){
+      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() + 0.1);
     }
 
-    SmartDashboard.putNumber("Extra Motor Speed", m_clawMotor.getSpeed());
+    double hatchInOutput = 0;
+
+    if(m_driveStick.getRawButton(8) || m_opStick.getRawButton(6)){
+      hatchInOutput = m_maxIntakeSpeed;
+    }else if(m_driveStick.getRawButton(7) || m_opStick.getRawButton(8)){
+      hatchInOutput = -m_maxIntakeSpeed;
+    }else{
+      hatchInOutput = 0;
+    }
+
+    if (m_hatchInMotor.getSpeed()>hatchInOutput){
+      m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() - 0.1);
+    }else if (m_hatchInMotor.getSpeed()<hatchInOutput){
+      m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() + 0.1);
+    }
+
+    SmartDashboard.putNumber("Extra Motor Speed", m_hatchInMotor.getSpeed());
   }
 
   @Override
   public void testInit() {
-    System.out.println(m_config);
+    System.out.println(m_pivotConfig);
   }
   /**
    * This function is called periodically during test mode.
    */
   @Override
   public void testPeriodic() {
-    double m_stickY = m_stick.getY()*-1;
-    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);
+    double m_stickY = m_driveStick.getY()*-1;
+
+    if(m_driveStick.getRawButton(6)){
+      //if cross
+      if(m_driveStick.getRawButton(2)){
+        //set to in position
+        m_elevPos = 0;
+      //else if square is pressed
+      }else if(m_driveStick.getRawButton(1)){
+        //set to out position
+        m_elevPos = 13000;
+      //if triangle
+      }else if(m_driveStick.getRawButton(4)){
+        //set to out position
+        m_pivotPos = 24900;
+      }
+    }else{
+      //if cross
+      if(m_driveStick.getRawButton(2)){
+        //set to in position
+        m_pivotPos = 0;
+      //else if square is pressed
+      }else if(m_driveStick.getRawButton(1)){
+        //set to out position
+        m_pivotPos = 1500;
+      //if triangle
+      }else if(m_driveStick.getRawButton(4)){
+        //set to out position
+        m_pivotPos = 2500;
+      }
+    }
     
+    m_pivot.set(ControlMode.Position, m_pivotPos);
+    m_elevator.set(ControlMode.Position, m_elevPos);
     
+    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
+    if(m_magSwitch.get()==false){
+      //reset encoder to 0
+      m_elevator.setSelectedSensorPosition(0, 0, 100);
+    }
+    
+    m_driveTrain.tankDrive(m_stickY, m_driveStick.getX()*-1);
+
   }
 }
