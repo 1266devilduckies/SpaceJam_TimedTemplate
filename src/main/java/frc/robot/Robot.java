@@ -55,6 +55,7 @@ public class Robot extends TimedRobot {
   private final DigitalInput m_magSwitch = new DigitalInput(0);
   private TalonSRXConfiguration m_eleConfig = new TalonSRXConfiguration();
   private int m_elevPos = 0;
+  private int m_elevLimit = 25000;
 
   //Same as elevator initialization, but for the pivot
   private final TalonSRX m_pivot = new TalonSRX(2);
@@ -62,6 +63,7 @@ public class Robot extends TimedRobot {
   private TalonSRXConfiguration m_pivotConfig = new TalonSRXConfiguration();
   private boolean m_pivotFolded = true;
   private int m_pivotPos = 0;
+  private int m_pivotLimit = 3400;
 
 
   private int cycles = 0;
@@ -80,7 +82,7 @@ public class Robot extends TimedRobot {
     //jeremy big gay
 
     //change drive axes for forward-back to up-down on left joystick (1), and left-right to left-right on right joystick (2)
-    m_driveStick.setXChannel(3);
+    m_driveStick.setXChannel(2);
     m_driveStick.setYChannel(1);
 
     //elevator motor configuration
@@ -90,7 +92,7 @@ public class Robot extends TimedRobot {
     m_eleConfig.primaryPID.selectedFeedbackCoefficient = 1;
     m_elevator.setSensorPhase(true);
     m_eleConfig.forwardSoftLimitEnable = true;
-    m_eleConfig.forwardSoftLimitThreshold = 25000;
+    m_eleConfig.forwardSoftLimitThreshold = m_elevLimit;
     m_eleConfig.reverseSoftLimitEnable = true;
     m_eleConfig.reverseSoftLimitThreshold = 0;
     m_eleConfig.slot0.kP = 0.25;
@@ -104,7 +106,7 @@ public class Robot extends TimedRobot {
     m_pivotConfig.primaryPID.selectedFeedbackCoefficient = 1;
     m_pivot.setSensorPhase(true);
     m_pivotConfig.forwardSoftLimitEnable = true;
-    m_pivotConfig.forwardSoftLimitThreshold = 2500;
+    m_pivotConfig.forwardSoftLimitThreshold = m_pivotLimit;
     m_pivotConfig.reverseSoftLimitEnable = true;
     m_pivotConfig.reverseSoftLimitThreshold = 0;
     m_pivotConfig.slot0.kP = 0.25;
@@ -184,43 +186,58 @@ public class Robot extends TimedRobot {
     double m_stickY = m_driveStick.getY()*-1;
 
     //drive with assigned joysticks
-    m_driveTrain.tankDrive(m_stickY, m_driveStick.getX()*-1);
+    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());
 
     //move elevator at half speed of Y axis
-    m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);    
+    //m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);    
 
     //Use smartdashboard to set max speed of claw motor
     if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
       m_maxIntakeSpeed = SmartDashboard.getNumber("Maximum Motor Speed", 1);
     }
 
-    //if cross is pressed
-    if(m_driveStick.getRawButton(2)){
-      //set to low position
-      m_elevPos = 0;
-    //else if square is pressed
-    }else if(m_driveStick.getRawButton(1)){
-      //set to middle position
-      m_elevPos = 13000;
-    //else if triangle is pressed
-    }else if(m_driveStick.getRawButton(4)){
-      //set to highest position
-      m_elevPos = 25000;
-    //else if circle is pressed
-    }else if(m_driveStick.getRawButtonPressed(3)){
-      //and the pivot motor is folded in
-      if(m_pivotFolded==true){
-        //fold out
-        m_pivot.set(ControlMode.Position, 1000);
-      }else{
-        //fold in
-        m_pivot.set(ControlMode.Position, 0);
+    if(m_opStick.getRawButton(13)){
+      //if cross
+      if(m_opStick.getRawButton(2)){
+        //set to in position
+        m_elevPos = 0;
+      //else if square is pressed
+      }else if(m_opStick.getRawButton(1)){
+        //set to out position
+        m_elevPos = 13000;
+      //if triangle
+      }else if(m_opStick.getRawButton(4)){
+        //set to out position
+        m_elevPos = m_elevLimit;
+      }else if(m_opStick.getPOV()==0 && m_elevPos < m_elevLimit){
+        m_elevPos += 100;
+      }else if(m_opStick.getPOV()==180 && m_elevPos > 0){
+        m_elevPos -= 100;
       }
-      //reverse status
-      m_pivotFolded = !m_pivotFolded;
+    }else{
+      //if cross
+      if(m_opStick.getRawButton(2)){
+        //set to in position
+        m_pivotPos = 0;
+      //else if square is pressed
+      }else if(m_opStick.getRawButton(1)){
+        //set to out position
+        m_pivotPos = 1500;
+      //if triangle
+      }else if(m_opStick.getRawButton(4)){
+        //set to out position
+        m_pivotPos = m_pivotLimit;
+      }else if(m_opStick.getPOV()==0 && m_pivotPos<m_pivotLimit){
+        m_pivotPos += 100;
+      }else if(m_opStick.getPOV()==180 && m_pivotPos>0){
+        m_pivotPos -= 100;
+      }
     }
 
     m_elevator.set(ControlMode.Position, m_elevPos);
+    m_pivot.set(ControlMode.Position, m_pivotPos);
+    SmartDashboard.putNumber("elevator", m_elevator.getSelectedSensorPosition());
+    SmartDashboard.putNumber("pivot", m_pivot.getSelectedSensorPosition());
 
     //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
     if(m_magSwitch.get()==false){
@@ -252,7 +269,7 @@ public class Robot extends TimedRobot {
 
     double hatchInOutput = 0;
 
-    if(m_driveStick.getRawButton(8) || m_opStick.getRawButton(6)){
+    if(m_driveStick.getRawButton(5) || m_opStick.getRawButton(6)){
       hatchInOutput = m_maxIntakeSpeed;
     }else if(m_driveStick.getRawButton(7) || m_opStick.getRawButton(8)){
       hatchInOutput = -m_maxIntakeSpeed;
@@ -293,6 +310,10 @@ public class Robot extends TimedRobot {
       }else if(m_driveStick.getRawButton(4)){
         //set to out position
         m_pivotPos = 24900;
+      }else if(m_driveStick.getPOV()==0){
+        m_elevPos += 100;
+      }else if(m_driveStick.getPOV()==180){
+        m_elevPos -= 100;
       }
     }else{
       //if cross
@@ -307,6 +328,10 @@ public class Robot extends TimedRobot {
       }else if(m_driveStick.getRawButton(4)){
         //set to out position
         m_pivotPos = 2500;
+      }else if(m_driveStick.getPOV()==0){
+        m_pivotPos += 100;
+      }else if(m_driveStick.getPOV()==180){
+        m_pivotPos -= 100;
       }
     }
     
@@ -319,7 +344,7 @@ public class Robot extends TimedRobot {
       m_elevator.setSelectedSensorPosition(0, 0, 100);
     }
     
-    m_driveTrain.tankDrive(m_stickY, m_driveStick.getX()*-1);
+    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());
 
   }
 }
