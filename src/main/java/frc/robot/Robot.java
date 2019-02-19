@@ -52,7 +52,7 @@ public class Robot extends TimedRobot {
 
   //Create TalonSRX object for elevator, magnetic limit switch for reverse limit on elevator, and configuration object so we can assign same config to any SRX
   private final TalonSRX m_elevator = new TalonSRX(0);
-  private final DigitalInput m_magSwitch = new DigitalInput(0);
+  private final DigitalInput m_elevSwitch = new DigitalInput(0);
   private TalonSRXConfiguration m_eleConfig = new TalonSRXConfiguration();
   private int m_elevPos = 0;
   private int m_elevLimit = 25000;
@@ -61,7 +61,7 @@ public class Robot extends TimedRobot {
 
   //Same as elevator initialization, but for the pivot
   private final TalonSRX m_pivot = new TalonSRX(2);
-  //add limit switch for pivot here
+  private DigitalInput m_pivotSwitch = new DigitalInput(1);
   private TalonSRXConfiguration m_pivotConfig = new TalonSRXConfiguration();
   private boolean m_pivotFolded = true;
   private int m_pivotPos = 0;
@@ -96,7 +96,7 @@ public class Robot extends TimedRobot {
     m_eleConfig.forwardSoftLimitEnable = true;
     m_eleConfig.forwardSoftLimitThreshold = m_elevLimit;
     m_eleConfig.reverseSoftLimitEnable = true;
-    m_eleConfig.reverseSoftLimitThreshold = 0;
+    m_eleConfig.reverseSoftLimitThreshold = -1000;
     m_eleConfig.slot0.kP = 0.25;
     m_eleConfig.slot0.kI = 0;
     m_elevator.configAllSettings(m_eleConfig);
@@ -110,7 +110,7 @@ public class Robot extends TimedRobot {
     m_pivotConfig.forwardSoftLimitEnable = true;
     m_pivotConfig.forwardSoftLimitThreshold = m_pivotLimit;
     m_pivotConfig.reverseSoftLimitEnable = true;
-    m_pivotConfig.reverseSoftLimitThreshold = 0;
+    m_pivotConfig.reverseSoftLimitThreshold = -1000;
     m_pivotConfig.slot0.kP = 0.25;
     m_pivotConfig.slot0.kI = 0;
     m_pivot.configAllSettings(m_pivotConfig);
@@ -163,7 +163,8 @@ public class Robot extends TimedRobot {
       case kDefaultAuto:
       default:
         // Put default auto code here
-        // moves drive train at full speed forward and back for 20 minutes to test gear wear or something, changes direction every 5 minutes
+
+        /* moves drive train at full speed forward and back for 20 minutes to test gear wear or something, changes direction every 5 minutes
         if(cycles<2){
           if(m_timer.get()<300){
             m_driveTrain.tankDrive(1, 1);
@@ -176,6 +177,8 @@ public class Robot extends TimedRobot {
         }else{
           m_driveTrain.tankDrive(0, 0);
         }
+        */
+
         break;
     }
   }
@@ -186,19 +189,17 @@ public class Robot extends TimedRobot {
   @Override
   public void teleopPeriodic() {
 
-    double pivotAngle = m_pivot.getSelectedSensorPosition() * 0.08789 + 40;
-    double pivot_kF = 0.87716*Math.cos(pivotAngle);
-    double elevator_kF = 0.46845;
+    //double pivotAngle = m_pivot.getSelectedSensorPosition() * 0.08789 + 40;
+    //double pivot_kF = 0.87716*Math.cos(pivotAngle);
+    double pivot_kF = 0;
+    //double elevator_kF = 0.46845;
 
 
     //invert y axis (default controller backwards)
     double m_stickY = m_driveStick.getY()*-1;
 
     //drive with assigned joysticks
-    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());
-
-    //move elevator at half speed of Y axis
-    //m_elevator.set(ControlMode.PercentOutput, m_stickY*0.5);    
+    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());   
 
     //Use smartdashboard to set max speed of claw motor
     if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
@@ -243,28 +244,54 @@ public class Robot extends TimedRobot {
       }
     }
 
-    m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
-    //m_pivot.set(ControlMode.Position, m_pivotPos, DemandType.ArbitraryFeedForward, pivot_kF);
+    if(m_elevPos == 0){
+      if(m_elevSwitch.get()==true){
+        if(m_elevator.getSelectedSensorPosition() > 1000){
+          m_elevator.set(ControlMode.Position, 0);
+        }else{
+          m_elevator.set(ControlMode.PercentOutput, -0.1);
+        }
+      }
+    }else if(m_elevPos > 0 && m_pivot.getSelectedSensorPosition()>1000){
+      m_pivotPos = 0;
+    }else{
+      m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
+    }
+
+
+    if(m_pivotPos == 0){
+      if(m_pivotSwitch.get()==true){
+        if(m_pivot.getSelectedSensorPosition() > 1000){
+          m_pivot.set(ControlMode.Position, 0);
+        }else{
+          m_pivot.set(ControlMode.PercentOutput, -0.1);
+        }
+      }
+    }else{
+      m_pivot.set(ControlMode.Position, m_pivotPos, DemandType.ArbitraryFeedForward, elevator_kF);
+    }
+    
+
     SmartDashboard.putNumber("elevator", m_elevator.getSelectedSensorPosition());
     SmartDashboard.putNumber("pivot", m_pivot.getSelectedSensorPosition());
 
     //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
-    if(m_magSwitch.get()==false){
+    if(m_elevSwitch.get()==false){
       //reset encoder to 0
-      m_elevator.setSelectedSensorPosition(0, 0, 100);
+      m_elevator.setSelectedSensorPosition(0);
     }
 
-    //when the magnetic sensor is triggered (i.e. pivot is fully folded)
-    /*if(m_magSwitch.get()==false){
+    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
+    if(m_pivotSwitch.get()==false){
       //reset encoder to 0
-      m_pivot.setSelectedSensorPosition(0, 0, 100);
-    }*/
+      m_pivot.setSelectedSensorPosition(0);
+    }
 
     double ballInOutput = 0;
 
-    if(m_opStick.getRawButton(5)){
+    if(m_opStick.getRawButton(6)){
       ballInOutput = m_maxIntakeSpeed;
-    }else if(m_opStick.getRawButton(7)){
+    }else if(m_opStick.getRawButton(8)){
       ballInOutput = -m_maxIntakeSpeed;
     }else{
       ballInOutput = 0;
@@ -278,9 +305,9 @@ public class Robot extends TimedRobot {
 
     double hatchInOutput = 0;
 
-    if(m_driveStick.getRawButton(5) || m_opStick.getRawButton(6)){
+    if(m_driveStick.getRawButton(5) || m_opStick.getRawButton(5)){
       hatchInOutput = m_maxIntakeSpeed;
-    }else if(m_driveStick.getRawButton(7) || m_opStick.getRawButton(8)){
+    }else if(m_driveStick.getRawButton(7) || m_opStick.getRawButton(7)){
       hatchInOutput = -m_maxIntakeSpeed;
     }else{
       hatchInOutput = 0;
@@ -298,13 +325,14 @@ public class Robot extends TimedRobot {
   @Override
   public void testInit() {
     System.out.println(m_pivotConfig);
+
+    while(m_elevSwitch.get() == true){
+      m_elevator.set(ControlMode.PercentOutput, 0.2, DemandType.ArbitraryFeedForward, elevator_kF);
+    }
+    
     m_pivot.setSelectedSensorPosition(0);
     m_pivotPos=0;
     m_elevPos=0;
-    m_elevator.setSelectedSensorPosition(0);
-    while(m_magSwitch.get() == true){
-      m_elevator.set(ControlMode.PercentOutput, 0.2, DemandType.ArbitraryFeedForward, elevator_kF);
-    }
     m_elevator.setSelectedSensorPosition(0);
   }
   /**
@@ -312,13 +340,8 @@ public class Robot extends TimedRobot {
    */
   @Override
   public void testPeriodic() {
-    /*while(m_magSwitch.get() == true && reset == false){
-      m_elevator.set(ControlMode.PercentOutput, 0.05, DemandType.ArbitraryFeedForward, elevator_kF);
-    }
-    reset = true;*/
-
     double pivotAngle = m_pivot.getSelectedSensorPosition() * 0.04395 + 45;
-    double pivot_kF = 0.87716*Math.cos(pivotAngle);
+    //double pivot_kF = 0.87716*Math.cos(pivotAngle);
 
     if(m_timer.get() %2 == 0){
       System.out.println(pivotAngle);
@@ -364,11 +387,22 @@ public class Robot extends TimedRobot {
       }
     }
 
+    if(m_elevPos == 0){
+      if(m_elevSwitch.get()==true){
+        if(m_elevator.getSelectedSensorPosition() > 1000){
+          m_elevator.set(ControlMode.Position, 0);
+        }else{
+          m_elevator.set(ControlMode.PercentOutput, -0.2);
+        }
+      }
+    }else{
+      m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
+    }
+
     m_pivot.set(ControlMode.Position, m_pivotPos/*,DemandType.ArbitraryFeedForward, pivot_kF*/);
-    m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
     
     //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
-    if(m_magSwitch.get()==false){
+    if(m_elevSwitch.get()==false){
       //reset encoder to 0
       m_elevator.setSelectedSensorPosition(0, 0, 100);
     }
