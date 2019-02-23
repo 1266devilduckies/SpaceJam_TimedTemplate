@@ -45,6 +45,9 @@ public class Robot extends TimedRobot {
 
   //Initialize controllers
   private final Joystick m_driveStick = new Joystick(0);
+  private double m_stickyY = 0;
+  private double m_stickyX = 0;
+
   private final Joystick m_opStick = new Joystick(1);
 
   //Create drivetrain object from DifferentialDrive
@@ -56,16 +59,15 @@ public class Robot extends TimedRobot {
   private TalonSRXConfiguration m_eleConfig = new TalonSRXConfiguration();
   private int m_elevPos = 0;
   private int m_elevLimit = 25000;
-  private final double elevator_kF = 0/*.46845*/;
+  private final double elevator_kF = 0;
   private boolean reset = false;
 
   //Same as elevator initialization, but for the pivot
   private final TalonSRX m_pivot = new TalonSRX(2);
   private DigitalInput m_pivotSwitch = new DigitalInput(1);
   private TalonSRXConfiguration m_pivotConfig = new TalonSRXConfiguration();
-  private boolean m_pivotFolded = true;
   private int m_pivotPos = 0;
-  private int m_pivotLimit = 3400;
+  private int m_pivotLimit = 2900;
 
 
   private int cycles = 0;
@@ -96,7 +98,7 @@ public class Robot extends TimedRobot {
     m_eleConfig.forwardSoftLimitEnable = true;
     m_eleConfig.forwardSoftLimitThreshold = m_elevLimit;
     m_eleConfig.reverseSoftLimitEnable = true;
-    m_eleConfig.reverseSoftLimitThreshold = -1000;
+    m_eleConfig.reverseSoftLimitThreshold = 0;
     m_eleConfig.slot0.kP = 0.25;
     m_eleConfig.slot0.kI = 0;
     m_elevator.configAllSettings(m_eleConfig);
@@ -111,7 +113,7 @@ public class Robot extends TimedRobot {
     m_pivotConfig.forwardSoftLimitThreshold = m_pivotLimit;
     m_pivotConfig.reverseSoftLimitEnable = true;
     m_pivotConfig.reverseSoftLimitThreshold = -1000;
-    m_pivotConfig.slot0.kP = 0.25;
+    m_pivotConfig.slot0.kP = 0.15;
     m_pivotConfig.slot0.kI = 0;
     m_pivot.configAllSettings(m_pivotConfig);
 
@@ -194,12 +196,22 @@ public class Robot extends TimedRobot {
     double pivot_kF = 0;
     //double elevator_kF = 0.46845;
 
+    double kP = 0.9;
 
-    //invert y axis (default controller backwards)
-    double m_stickY = m_driveStick.getY()*-1;
+    //invert y axis and add ramp (default controller backwards)
+    double m_targetY = Math.round(m_driveStick.getY()*-100.0)/100.0;
+
+    //m_stickyY = kP * (m_targetY - m_stickyY);
+    m_stickyY = m_targetY;
+
+    //invert y axis and add ramp (default controller backwards)
+    double m_targetX = Math.round(m_driveStick.getX()*100.0)/100.0;
+
+    //m_stickyX = kP * (m_targetX - m_stickyX);
+    m_stickyX = m_targetX;
 
     //drive with assigned joysticks
-    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());   
+    m_driveTrain.arcadeDrive(m_stickyY, m_stickyX);  
 
     //Use smartdashboard to set max speed of claw motor
     if(SmartDashboard.getNumber("Maximum Motor Speed", 1)<=1 && SmartDashboard.getNumber("motorMaxSpeed", 1)>=-1){
@@ -244,16 +256,25 @@ public class Robot extends TimedRobot {
       }
     }
 
-    if(m_elevPos == 0){
+    m_elevator.configReverseSoftLimitEnable(true);
+
+    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
+    if(m_elevSwitch.get()==false){
+      //reset encoder to 0
+      m_elevator.setSelectedSensorPosition(0);
+    }
+
+    if(Math.abs(m_elevator.getSelectedSensorVelocity()) > 50 && m_pivotSwitch.get() == true){
+      m_pivotPos = 0;
+    }else if(m_elevPos == 0){
       if(m_elevSwitch.get()==true){
+        m_elevator.configReverseSoftLimitEnable(false);
         if(m_elevator.getSelectedSensorPosition() > 1000){
           m_elevator.set(ControlMode.Position, 0);
         }else{
-          m_elevator.set(ControlMode.PercentOutput, -0.1);
+          m_elevator.set(ControlMode.PercentOutput, -0.2);
         }
       }
-    }else if(m_elevPos > 0 && m_pivot.getSelectedSensorPosition()>1000){
-      m_pivotPos = 0;
     }else{
       m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
     }
@@ -270,54 +291,51 @@ public class Robot extends TimedRobot {
     }else{
       m_pivot.set(ControlMode.Position, m_pivotPos, DemandType.ArbitraryFeedForward, elevator_kF);
     }
-    
 
-    SmartDashboard.putNumber("elevator", m_elevator.getSelectedSensorPosition());
-    SmartDashboard.putNumber("pivot", m_pivot.getSelectedSensorPosition());
-
-    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
-    if(m_elevSwitch.get()==false){
-      //reset encoder to 0
-      m_elevator.setSelectedSensorPosition(0);
-    }
-
-    //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
+    //when the magnetic pivot sensor is triggered (i.e. pivot is at the bottom)
     if(m_pivotSwitch.get()==false){
       //reset encoder to 0
       m_pivot.setSelectedSensorPosition(0);
     }
+        
+    SmartDashboard.putNumber("ElevPos", m_elevPos);
+    SmartDashboard.putNumber("elevator", m_elevator.getSelectedSensorPosition());
+    SmartDashboard.putNumber("pivot", m_pivot.getSelectedSensorPosition());
 
-    double ballInOutput = 0;
+    double ballTarget = 0;
+    double ballSpeed = Math.round(m_ballInMotor.getSpeed() * 10.0) / 10.0;
 
     if(m_opStick.getRawButton(6)){
-      ballInOutput = m_maxIntakeSpeed;
+      ballTarget = m_maxIntakeSpeed;
     }else if(m_opStick.getRawButton(8)){
-      ballInOutput = -m_maxIntakeSpeed;
+      ballTarget = -m_maxIntakeSpeed;
     }else{
-      ballInOutput = 0;
+      ballTarget = 0;
     }
 
-    if (m_ballInMotor.getSpeed()>ballInOutput){
-      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() - 0.1);
-    }else if (m_ballInMotor.getSpeed()<ballInOutput){
-      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() + 0.1);
+    if(ballSpeed>ballTarget){
+      m_ballInMotor.setSpeed(ballSpeed - 0.1);
+    }else if (ballSpeed<ballTarget){
+      m_ballInMotor.setSpeed(ballSpeed + 0.1);
     }
 
-    double hatchInOutput = 0;
+    double hatchTarget = 0;
+    double hatchSpeed = Math.round(m_hatchInMotor.getSpeed() * 10.0) / 10.0;
 
     if(m_driveStick.getRawButton(5) || m_opStick.getRawButton(5)){
-      hatchInOutput = m_maxIntakeSpeed;
+      hatchTarget = m_maxIntakeSpeed;
     }else if(m_driveStick.getRawButton(7) || m_opStick.getRawButton(7)){
-      hatchInOutput = -m_maxIntakeSpeed;
+      hatchTarget = -m_maxIntakeSpeed;
     }else{
-      hatchInOutput = 0;
+      hatchTarget = 0;
     }
 
-    if (m_hatchInMotor.getSpeed()>hatchInOutput){
-      m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() - 0.1);
-    }else if (m_hatchInMotor.getSpeed()<hatchInOutput){
-      m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() + 0.1);
+    if(hatchSpeed > hatchTarget){
+      m_hatchInMotor.setSpeed(hatchSpeed - 0.1);
+    }else if (hatchSpeed < hatchTarget){
+      m_hatchInMotor.setSpeed(hatchSpeed + 0.1);
     }
+
 
     SmartDashboard.putNumber("Extra Motor Speed", m_hatchInMotor.getSpeed());
   }
@@ -344,10 +362,10 @@ public class Robot extends TimedRobot {
     //double pivot_kF = 0.87716*Math.cos(pivotAngle);
 
     if(m_timer.get() %2 == 0){
-      System.out.println(pivotAngle);
+      System.out.println(m_elevator.getSelectedSensorVelocity());
     }
 
-    double m_stickY = m_driveStick.getY()*-1;
+    double m_stickyY = m_driveStick.getY()*-1;
 
     if(m_driveStick.getRawButton(13)){
       //if cross
@@ -411,49 +429,49 @@ public class Robot extends TimedRobot {
       m_maxIntakeSpeed = SmartDashboard.getNumber("Maximum Motor Speed", 1);
     }
 
-    double ballInOutput = 0;
+    double ballTarget = 0;
 
     if(m_driveStick.getRawButton(6)){
-      ballInOutput = m_maxIntakeSpeed;
+      ballTarget = m_maxIntakeSpeed;
     }else if(m_driveStick.getRawButton(8)){
-      ballInOutput = -m_maxIntakeSpeed;
+      ballTarget = -m_maxIntakeSpeed;
     }else{
-      ballInOutput = 0;
+      ballTarget = 0;
     }
 
-    m_ballInMotor.setSpeed(ballInOutput);
+    m_ballInMotor.setSpeed(ballTarget);
 
     /*
-    if (m_ballInMotor.getSpeed()>ballInOutput){
-      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() - 0.1);
-    }else if (m_ballInMotor.getSpeed()<ballInOutput){
-      m_ballInMotor.setSpeed(m_ballInMotor.getSpeed() + 0.1);
+    if (ballSpeed>ballTarget){
+      m_ballInMotor.setSpeed(ballSpeed - 0.1);
+    }else if (ballSpeed<ballTarget){
+      m_ballInMotor.setSpeed(ballSpeed + 0.1);
     }
     */
 
-    double hatchInOutput = 0;
+    double hatchTarget = 0;
 
     if(m_driveStick.getRawButton(5)){
-      hatchInOutput = m_maxIntakeSpeed;
+      hatchTarget = m_maxIntakeSpeed;
     }else if(m_driveStick.getRawButton(7)){
-      hatchInOutput = -m_maxIntakeSpeed;
+      hatchTarget = -m_maxIntakeSpeed;
     }else{
-      hatchInOutput = 0;
+      hatchTarget = 0;
     }
 
-    m_hatchInMotor.set(hatchInOutput);
+    m_hatchInMotor.set(hatchTarget);
 
     /*
-    if (m_hatchInMotor.getSpeed()>hatchInOutput){
+    if (m_hatchInMotor.getSpeed()>hatchTarget){
       m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() - 0.1);
-    }else if (m_hatchInMotor.getSpeed()<hatchInOutput){
+    }else if (m_hatchInMotor.getSpeed()<hatchTarget){
       m_hatchInMotor.setSpeed(m_hatchInMotor.getSpeed() + 0.1);
     }
     */
 
     SmartDashboard.putNumber("Extra Motor Speed", m_hatchInMotor.getSpeed());
     
-    m_driveTrain.arcadeDrive(m_stickY, m_driveStick.getX());
+    m_driveTrain.arcadeDrive(m_stickyY, m_driveStick.getX());
 
   }
 }
