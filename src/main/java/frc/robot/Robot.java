@@ -68,6 +68,9 @@ public class Robot extends TimedRobot {
   private TalonSRXConfiguration m_pivotConfig = new TalonSRXConfiguration();
   private int m_pivotPos = 0;
   private int m_pivotLimit = 2900;
+  private int m_stickyElevPos = 0;
+
+  private int mode = 0;
 
 
   private int cycles = 0;
@@ -196,19 +199,23 @@ public class Robot extends TimedRobot {
     double pivot_kF = 0;
     //double elevator_kF = 0.46845;
 
-    double kP = 0.9;
+    //invert y axis and add ramp (default controller backwards)
+    double targetY = Math.round(m_driveStick.getY()*-100.0)/100.0;
+
+    if(m_stickyY>targetY){
+      m_ballInMotor.setSpeed(m_stickyY - 0.01);
+    }else if (m_stickyY<targetY){
+      m_ballInMotor.setSpeed(m_stickyY + 0.01);
+    }
 
     //invert y axis and add ramp (default controller backwards)
-    double m_targetY = Math.round(m_driveStick.getY()*-100.0)/100.0;
+    double targetX = Math.round(m_driveStick.getX()*100.0)/100.0;
 
-    //m_stickyY = kP * (m_targetY - m_stickyY);
-    m_stickyY = m_targetY;
-
-    //invert y axis and add ramp (default controller backwards)
-    double m_targetX = Math.round(m_driveStick.getX()*100.0)/100.0;
-
-    //m_stickyX = kP * (m_targetX - m_stickyX);
-    m_stickyX = m_targetX;
+    if(m_stickyX>targetX){
+      m_ballInMotor.setSpeed(m_stickyX - 0.01);
+    }else if (m_stickyX<targetX){
+      m_ballInMotor.setSpeed(m_stickyX + 0.01);
+    }
 
     //drive with assigned joysticks
     m_driveTrain.arcadeDrive(m_stickyY, m_stickyX);  
@@ -256,6 +263,48 @@ public class Robot extends TimedRobot {
       }
     }
 
+    switch(mode){
+      case 1:
+        m_elevPos = 0;
+        m_pivotPos = m_pivotLimit;
+        break;
+      
+      case 2:
+        m_elevPos = 7000;
+        m_pivotPos = m_pivotLimit;
+        break;
+
+      case 3:
+        m_elevPos = 9000;
+        m_pivotPos = m_pivotLimit;
+        break;
+
+      case 4:
+        m_elevPos = 13000;
+        m_pivotPos = m_pivotLimit;
+        break;
+
+      case 5:
+        m_elevPos = 15000;
+        m_pivotPos = m_pivotLimit;
+        break;
+        
+      case 6:
+        m_elevPos = m_elevLimit;
+        m_pivotPos = m_pivotLimit;
+        break;
+      
+      case 7:
+        m_elevPos = m_elevLimit;
+        m_pivotPos = 2000;
+        break;
+      
+      default:
+        m_elevPos = 0;
+        m_pivotPos = m_pivotLimit;
+        break;
+    }
+
     m_elevator.configReverseSoftLimitEnable(true);
 
     //when the magnetic sensor is triggered (i.e. elevator is at the bottom)
@@ -264,9 +313,10 @@ public class Robot extends TimedRobot {
       m_elevator.setSelectedSensorPosition(0);
     }
 
-    if(Math.abs(m_elevator.getSelectedSensorVelocity()) > 50 && m_pivotSwitch.get() == true){
+    if(Math.abs((m_stickyElevPos-m_elevPos)) > 100 && m_pivotSwitch.get() == true){
       m_pivotPos = 0;
     }else if(m_elevPos == 0){
+      m_stickyElevPos = 0;
       if(m_elevSwitch.get()==true){
         m_elevator.configReverseSoftLimitEnable(false);
         if(m_elevator.getSelectedSensorPosition() > 1000){
@@ -276,7 +326,8 @@ public class Robot extends TimedRobot {
         }
       }
     }else{
-      m_elevator.set(ControlMode.Position, m_elevPos, DemandType.ArbitraryFeedForward, elevator_kF);
+      m_stickyElevPos = m_elevPos;
+      m_elevator.set(ControlMode.Position, m_stickyElevPos, DemandType.ArbitraryFeedForward, elevator_kF);
     }
 
 
@@ -288,7 +339,7 @@ public class Robot extends TimedRobot {
           m_pivot.set(ControlMode.PercentOutput, -0.1);
         }
       }
-    }else{
+    }else if (m_elevator.getSelectedSensorVelocity()<=100 && Math.abs(m_elevator.getSelectedSensorPosition()-m_elevPos)<1000){
       m_pivot.set(ControlMode.Position, m_pivotPos, DemandType.ArbitraryFeedForward, elevator_kF);
     }
 
